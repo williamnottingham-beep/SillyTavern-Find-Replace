@@ -1,11 +1,11 @@
 {
-  "display_name": "Chat Find & Replace Polish",
-  "loading_order": 20,
-  "requires": [],
-  "optional": [],
+  "display_name": "Chat Find & Replace Plus",
+  "loading_order": 55,
   "js": "index.js",
   "css": "style.css",
-  "author": "OpenAI",
-  "version": "1.0.0",
+  "author": "Chat Find & Replace contributors, enhancements by OpenAI",
+  "version": "1.2.0",
+  "auto_update": false,
+  "minimum_client_version": "1.14.0",
   "homePage": "https://github.com/williamnottingham-beep/SillyTavern-Find-Replace"
 }
