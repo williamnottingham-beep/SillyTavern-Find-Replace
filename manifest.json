@@ -1,0 +1,10 @@
+{
+  "display_name": "Chat Find & Replace",
+  "loading_order": 55,
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Chat Find & Replace contributors",
+  "version": "1.1.1",
+  "auto_update": false,
+  "minimum_client_version": "1.14.0"
+}
