@@ -239,23 +239,37 @@
         if (!panel || panel.hidden) return;
         const launcher = launcherElement?.isConnected ? launcherElement : document.getElementById('cfr-launcher');
         if (!launcher?.isConnected) return;
+
         const rect = launcher.getBoundingClientRect();
-        const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
-        const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+        const visual = window.visualViewport;
+        // On mobile, the visual viewport can be much shorter than the layout
+        // viewport while the software keyboard is open. Position against the
+        // actually visible area so the panel doesn't open behind the keyboard.
+        const viewportWidth = Math.max(1, visual?.width || document.documentElement.clientWidth || window.innerWidth);
+        const viewportHeight = Math.max(1, visual?.height || window.innerHeight || document.documentElement.clientHeight);
+        const offsetLeft = visual?.offsetLeft || 0;
+        const offsetTop = visual?.offsetTop || 0;
+        const layoutHeight = window.innerHeight || document.documentElement.clientHeight || viewportHeight;
+        const visibleRight = offsetLeft + viewportWidth;
+        const visibleBottom = offsetTop + viewportHeight;
         const narrow = viewportWidth <= 560;
         const panelWidth = Math.max(0, Math.min(320, viewportWidth - 16));
+        const minLeft = offsetLeft + 8;
+        const maxLeft = Math.max(minLeft, visibleRight - panelWidth - 8);
+        const left = narrow ? minLeft : Math.max(minLeft, Math.min(rect.left, maxLeft));
+
+        panel.style.left = `${left}px`;
+        panel.style.right = 'auto';
+        panel.style.width = `min(320px, ${Math.max(0, viewportWidth - 16)}px)`;
+        // `bottom` is measured from the layout viewport; clamp the anchor to
+        // the visible viewport bottom when a keyboard or browser UI covers it.
+        const anchorTop = Math.min(rect.top, visibleBottom - 8);
+        panel.style.bottom = `${Math.max(8, layoutHeight - anchorTop + 8)}px`;
         if (narrow) {
-            // CSS env() keeps the panel clear of notches and rounded-screen safe areas.
-            panel.style.left = 'max(8px, env(safe-area-inset-left))';
-            panel.style.right = 'auto';
-            panel.style.width = 'min(320px, calc(100vw - 16px))';
+            panel.style.maxHeight = `${Math.max(120, Math.min(400, viewportHeight - 24))}px`;
         } else {
-            const left = Math.max(8, Math.min(rect.left, viewportWidth - panelWidth - 8));
-            panel.style.left = `${left}px`;
-            panel.style.right = 'auto';
-            panel.style.width = 'min(320px, calc(100vw - 16px))';
+            panel.style.maxHeight = '';
         }
-        panel.style.bottom = `${Math.max(8, viewportHeight - rect.top + 8)}px`;
     }
 
     function openPanel() {
@@ -288,21 +302,97 @@
     }
 
     function bindUI() {
-        // Use a delegated capture listener because the launcher lives inside the
-        // SillyTavern composer, outside #cfr-root, and the composer can be rebuilt.
-        // This keeps the button functional even if SillyTavern replaces/reparents UI.
-        document.addEventListener('click', event => {
-            const target = event.target instanceof Element ? event.target.closest('#cfr-launcher') : null;
+        // The launcher lives outside #cfr-root in SillyTavern's composer, which
+        // is rebuilt by some mobile layouts. Use delegated events and support
+        // touch pointers explicitly because some mobile WebViews don't reliably
+        // synthesize a click for a button reparented into the composer.
+        const getLauncherTarget = event => {
+            const target = event?.target;
+            if (target instanceof Element) return target.closest('#cfr-launcher');
+            return target?.parentElement?.closest?.('#cfr-launcher') || null;
+        };
+        let activePointer = null;
+        let suppressClickTarget = null;
+        let suppressClickUntil = 0;
+
+        const activateLauncher = (event, target, fromTouchPointer = false) => {
             if (!target) return;
             event.preventDefault();
             event.stopPropagation();
+            if (fromTouchPointer) {
+                suppressClickTarget = target;
+                suppressClickUntil = performance.now() + 900;
+            }
             togglePanel();
+        };
+
+        if ('PointerEvent' in window) {
+            document.addEventListener('pointerdown', event => {
+                if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+                const target = getLauncherTarget(event);
+                activePointer = target ? {
+                    target,
+                    pointerId: event.pointerId,
+                    x: event.clientX,
+                    y: event.clientY,
+                } : null;
+            }, true);
+
+            document.addEventListener('pointerup', event => {
+                if (!activePointer || activePointer.pointerId !== event.pointerId) return;
+                const start = activePointer;
+                activePointer = null;
+                // Ignore finger drags, scrolling gestures, and taps that began elsewhere.
+                if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 12) return;
+                const target = getLauncherTarget(event);
+                if (!start.target.isConnected || (target && target !== start.target)) return;
+                activateLauncher(event, start.target, true);
+            }, true);
+
+            document.addEventListener('pointercancel', event => {
+                if (activePointer?.pointerId === event.pointerId) activePointer = null;
+            }, true);
+        } else {
+            // Legacy mobile WebView fallback for browsers without Pointer Events.
+            let touchStart = null;
+            document.addEventListener('touchstart', event => {
+                const target = getLauncherTarget(event);
+                const touch = event.changedTouches?.[0];
+                touchStart = target && touch ? { target, x: touch.clientX, y: touch.clientY } : null;
+            }, { capture: true, passive: true });
+            document.addEventListener('touchend', event => {
+                if (!touchStart) return;
+                const start = touchStart;
+                touchStart = null;
+                const touch = event.changedTouches?.[0];
+                if (!touch || Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > 12) return;
+                if (!start.target.isConnected) return;
+                activateLauncher(event, start.target, true);
+            }, { capture: true, passive: false });
+            document.addEventListener('touchcancel', () => { touchStart = null; }, true);
+        }
+
+        // Keep click for mouse, keyboard, assistive technology and as a fallback.
+        // Consume the synthetic click after a touch pointer so one tap never toggles twice.
+        document.addEventListener('click', event => {
+            const target = getLauncherTarget(event);
+            if (!target) return;
+            if (event.detail > 0 && target === suppressClickTarget && performance.now() < suppressClickUntil) {
+                suppressClickTarget = null;
+                suppressClickUntil = 0;
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
+            activateLauncher(event, target, false);
         }, true);
+
         const reposition = () => positionPanel();
         window.addEventListener('resize', reposition, { passive: true });
         window.addEventListener('orientationchange', reposition, { passive: true });
         window.visualViewport?.addEventListener('resize', reposition, { passive: true });
         window.visualViewport?.addEventListener('scroll', reposition, { passive: true });
+        window.addEventListener('scroll', reposition, { passive: true, capture: true });
         panel.addEventListener('click', event => {
             const button = event.target.closest('[data-cfr-action]');
             if (!button) return;

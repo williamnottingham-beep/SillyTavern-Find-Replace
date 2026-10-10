@@ -1,8 +1,8 @@
-# Chat Find & Replace Plus 1.2.0
+# Chat Find & Replace Plus 1.2.1
 
 A polished build of [SillyTavern-Find-Replace](https://github.com/williamnottingham-beep/SillyTavern-Find-Replace), with a compact panel, rendered-text match highlights, and fixes for the composer launcher disappearing after UI rebuilds.
 
-## What changed in 1.2.0
+## What changed in 1.2.0 (base build)
 
 - **Restored/recoverable launcher:** keeps a reference to the launcher even when SillyTavern rebuilds `#leftSendForm`, then reattaches it to the new composer. The observer watches `document.body`, not an element that may itself be replaced.
 - **Integrated extension, not a companion:** all controls, replacement logic, and highlighting ship in this one `chat-find-replace` folder. It does not depend on a second extension to display the button.
@@ -47,3 +47,13 @@ This package was checked for JavaScript syntax, manifest JSON validity, and ZIP 
 ## License
 
 MIT. See `LICENSE`.
+
+
+## Mobile tap fix (v1.2.1)
+
+- Adds explicit touch/pen pointer handling for the composer launcher while keeping mouse and keyboard activation.
+- Deduplicates the synthetic click after a touch so a single tap cannot open and immediately close the panel.
+- Ignores pointer drags so swiping/scrolling across the launcher does not activate it.
+- Positions the panel against the current visual viewport, including when the mobile browser UI or on-screen keyboard changes the visible area.
+
+Update by replacing the existing `chat-find-replace` folder, then refresh SillyTavern. Disable/remove any older duplicate copies before testing.

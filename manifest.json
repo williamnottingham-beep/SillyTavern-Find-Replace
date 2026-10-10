@@ -4,7 +4,7 @@
   "js": "index.js",
   "css": "style.css",
   "author": "Chat Find & Replace contributors, enhancements by OpenAI",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "auto_update": false,
   "minimum_client_version": "1.14.0",
   "homePage": "https://github.com/williamnottingham-beep/SillyTavern-Find-Replace"
